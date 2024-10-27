@@ -1,14 +1,17 @@
 
 # Bazzy
-**Bazzy** is a Nim-based tool designed to inject shellcode into Windows processes. It can target either the `explorer.exe` process by default or inject into a specified process in a suspended state.
+**Bazzy** is a Nim-based tool designed to inject shellcode into Windows processes or execute it directly. It can target either the `explorer.exe` process by default, inject into a specified process in a suspended state, or execute shellcode directly without process injection.
 
 ## Features
-- Injects and executes shellcode in target processes
-- Supports creating remote threads for executing injected code
+- Multiple execution modes:
+  - Direct shellcode execution
+  - Process injection with remote thread creation
+  - Suspended process creation and injection
 - Command-line interface with multiple options:
   - Custom base64 encoded shellcode payload
   - Target process selection
   - Default injection into explorer.exe
+  - Direct shellcode execution
 - Process creation in suspended state for safer injection
 - Support for both direct process injection and suspended process injection
 
@@ -51,14 +54,21 @@ bazzy -p "your_base64_payload"
 # Use custom payload and inject into specific process
 bazzy -p "your_base64_payload" -t "notepad.exe"
 
+# Execute shellcode directly without process injection
+bazzy -p "your_base64_payload" -e
+
 # Use default payload but inject into specific process
 bazzy -t "notepad.exe"
 ```
-
+### Execution Modes
+- Direct Execution (-e): Executes the shellcode directly in the current process
+- Targeted Injection (-t): Creates a suspended process and injects the shellcode
+- Default Injection: Injects into explorer.exe if no other mode is specified
 ### Command Line Options
 - `-h, --help`: Show help information
 - `-p, --payload <base64>`: Specify base64 encoded shellcode payload
 - `-t, --target <process>`: Specify target process name (default: explorer.exe)
+-  -e, --execute: Execute shellcode directly without process injection
 
 ## Disclaimer
 This project is intended solely for educational and research purposes. 
