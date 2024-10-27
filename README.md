@@ -52,3 +52,7 @@ This project is intended solely for educational and research purposes.
 
 Feel free to open issues and submit pull requests if you'd like to contribute.
 
+## Credits
+
+Inspired by the following projects: https://github.com/sh3d0ww01f/nim_shellloader/ and https://github.com/byt3bl33d3r/OffensiveNim 
+
