@@ -1,6 +1,4 @@
-Here's the updated README.md that includes the new CLI features:
 
-```markdown
 # Bazzy
 **Bazzy** is a Nim-based tool designed to inject shellcode into Windows processes. It can target either the `explorer.exe` process by default or inject into a specified process in a suspended state.
 
