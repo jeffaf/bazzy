@@ -1,4 +1,4 @@
-import winim/lean, winim/inc/psapi
+import winim/lean
 import strformat
 
 proc createSuspendedProcess*(lpProcessName: string, dwProcessId: ptr DWORD, hProcess: ptr HANDLE, hThread: ptr HANDLE): bool =

