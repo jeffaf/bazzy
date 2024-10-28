@@ -9,11 +9,9 @@
   - Suspended process creation and injection
 - Command-line interface with multiple options:
   - Custom base64 encoded shellcode payload
-  - Target process selection
   - Default injection into explorer.exe
   - Direct shellcode execution
 - Process creation in suspended state for safer injection
-- Support for both direct process injection and suspended process injection
 
 ## Requirements
 - **Nim**: [Nim Programming Language](https://nim-lang.org/)
