@@ -55,7 +55,7 @@ bazzy -p "your_base64_payload" -t "notepad.exe"
 # Execute shellcode directly without process injection
 bazzy -p "your_base64_payload" -e
 
-# Use default payload but inject into specific process (TODO)
+# Use default payload but inject into newly spawned process 
 bazzy -t "notepad.exe"
 ```
 ### Execution Modes
