@@ -1,6 +1,6 @@
 
 # Bazzy
-**Bazzy** is a Nim-based tool designed to inject shellcode into Windows processes or execute it directly. It can target either the `explorer.exe` process by default, inject into a newly spawned process in a suspended state, or execute shellcode directly without process injection.
+**Bazzy** is a tool designed to inject shellcode into Windows processes or execute it directly. It can target either the `explorer.exe` process by default, inject into a newly spawned process in a suspended state, or execute shellcode directly without process injection.
 
 ## Features
 - Multiple execution modes:
