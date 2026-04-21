@@ -1,5 +1,5 @@
 # Helper tool to clean and validate base64 strings for Windows usage, run independently from bazzy. 
-import os, base64, strutils, parseopt
+import base64, strutils, parseopt, os
 
 proc cleanBase64(input: string): string =
   # Remove quotes, newlines, and spaces
@@ -21,7 +21,7 @@ proc validateBase64(b64str: string): bool =
     # Try decode
     discard decode(paddedStr)
     result = true
-  except:
+  except CatchableError:
     result = false
 
 proc processFile(filepath: string): string =
